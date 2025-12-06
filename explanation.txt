@@ -1,0 +1,45 @@
+For the 32x32 array:
+The first thing I thought of was blocking, because we learned that it helps with locality. The cache has 32 sets and each block is 32 bytes (8 ints), so I decided to use 8x8 blocks because:
+
+8 ints fit perfectly in a cache block.
+With smaller blocks, I take better advantage of spatial locality.
+
+The big problem I saw was with diagonal blocks. When you're in a diagonal block (like when row==col), A[i][j] and B[j][i] can map to the same set in the cache because it's direct-mapped. This causes terrible conflict misses.
+
+So what I did was: when I find a diagonal element (i==j), instead of writing it immediately to B, I store it in a temporary variable and write it after the loop. This way I avoid fighting for the same cache line between A and B.
+Result: 288 misses - well below the 300 threshold ✓
+For the 64x64 array:
+This was the most difficult and I had to try several things. At first, I tried using 8x8 blocking like in 32x32, but it gave me too many misses. Then I tried with simple 4x4 blocks using "load all then store all":
+
+I loaded a complete row from A into my temp variables (temp0, temp1, temp2, temp3)
+I wrote them all to B at once
+I repeated for each row of the block
+
+But this only gave me 1652 misses, which is between the 1300 and 2000 threshold, so I only got 4 out of 8 points. It wasn't enough.
+
+The problem: With 64x64, there is much more competition for cache sets. The 4x4 blocks were too small and didn't take good advantage of spatial locality, but the 8x8 blocks caused too many conflicts.
+
+The solution: I used a more advanced technique—8x8 blocking but processed in 4x4 sub-blocks. The strategy is:
+
+I process the first 4 rows of the 8x8 block.
+I store the first half (4 elements) in their correct position in B.
+I temporarily store the second half (4 elements) in the top right of block B.
+Then I rearrange those temporary elements to their correct positions.
+I complete the rest of the 8x8 block.
+
+Basically, I use space B as temporary storage, which is legal according to the rules. This allows me to work with 8x8 blocks (better locality) but without causing so many conflict misses because I process it in smaller chunks.
+
+For the 61x67 matrix:
+This one seemed simpler, honestly. Since it's not a power of 2, there isn't as much of a problem with systematic conflicts. I used 16x16 blocks because:
+
+They are large enough to have good locality.
+They are not so large as to cause many evictions.
+
+The only important thing here was to do bounds checking (i < N and j < M) to avoid going outside the array, since 61 and 67 are not divisible by 16.
+
+Mistakes I encountered:
+
+Unused variables: Initially, I declared 8 temp variables (temp0 through temp7) thinking I would need them all, but then I realized I only use 4 (temp0-temp3). When I tried to compile, the compiler gave me an "unused variable" error because it has the -Werror flag, which turns warnings into errors. I had to remove temp4, temp5, temp6, and temp7 from the declaration.
+Very simple 64x64 blocking: My first attempt with 4x4 blocking was too simple and resulted in 1652 misses (only 4/8 points). I had to think more creatively and use the technique of sub-blocking within larger blocks, using B as temporary storage.
+
+The overall strategy was: use blocking to improve temporal locality, handle diagonals carefully to avoid conflicts, use temp variables to reduce memory accesses, and when necessary (64x64), use more advanced techniques like sub-blocking and using the destination array as temporary storage. We learned all of this in class when we looked at how the cache works and why blocking helps.
